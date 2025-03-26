@@ -1,0 +1,144 @@
+import pygetwindow as gw
+import mss
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
+import time
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D,Flatten,MaxPooling2D
+from tensorflow.keras.callbacks import ModelCheckpoint
+import pyautogui
+import tensorflow_datasets as tfds
+
+path="C:/Users/PMLS/OneDrive/Desktop/Ahmed ki bla/Ahmed Programs/Model Checkpoints/checkpoint1.weights.h5"
+check=ModelCheckpoint(filepath=path,save_best_only=True,save_weights_only=True,verbose=1)
+model = tf.keras.Sequential([
+    tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+    tf.keras.layers.MaxPooling2D(2, 2),
+    tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+    tf.keras.layers.MaxPooling2D(2, 2),
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(10, activation='softmax')  # 10 classes (digits 0-9)
+])
+
+model.compile(optimizer="adam",loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+
+
+print("Do you want to load model? (y/n): ")
+ans = input()
+if ans.lower() != "y":
+    # Load MNIST
+    (mnist_train_images, mnist_train_labels), (mnist_test_images, mnist_test_labels) = tf.keras.datasets.mnist.load_data()
+
+    # Load EMNIST/digits
+    emnist_data = tfds.load("emnist/digits", split=["train", "test"], as_supervised=True)
+
+    # Convert EMNIST data from TensorFlow dataset to numpy arrays
+    emnist_train_images, emnist_train_labels = [], []
+    emnist_test_images, emnist_test_labels = [], []
+
+    for img, label in tfds.as_numpy(emnist_data[0]):  # Train split
+        emnist_train_images.append(img)
+        emnist_train_labels.append(label)
+
+    for img, label in tfds.as_numpy(emnist_data[1]):  # Test split
+        emnist_test_images.append(img)
+        emnist_test_labels.append(label)
+
+    # Convert lists to numpy arrays
+    emnist_train_images = np.array(emnist_train_images)
+    emnist_train_labels = np.array(emnist_train_labels)
+    emnist_test_images = np.array(emnist_test_images)
+    emnist_test_labels = np.array(emnist_test_labels)
+
+    # Normalize pixel values (0-255) to (0-1)
+    mnist_train_images = mnist_train_images / 255.0
+    mnist_test_images = mnist_test_images / 255.0
+    emnist_train_images = emnist_train_images / 255.0
+    emnist_test_images = emnist_test_images / 255.0
+
+    # Reshape to (batch_size, 28, 28, 1) for CNNs
+    mnist_train_images = mnist_train_images.reshape(-1, 28, 28, 1)
+    mnist_test_images = mnist_test_images.reshape(-1, 28, 28, 1)
+    emnist_train_images = emnist_train_images.reshape(-1, 28, 28, 1)
+    emnist_test_images = emnist_test_images.reshape(-1, 28, 28, 1)
+
+    # Combine training sets
+    combined_train_images = np.concatenate((mnist_train_images, emnist_train_images), axis=0)
+    combined_train_labels = np.concatenate((mnist_train_labels, emnist_train_labels), axis=0)
+
+    # Combine test sets
+    combined_test_images = np.concatenate((mnist_test_images, emnist_test_images), axis=0)
+    combined_test_labels = np.concatenate((mnist_test_labels, emnist_test_labels), axis=0)
+
+    from sklearn.utils import shuffle
+    combined_train_images, combined_train_labels = shuffle(combined_train_images, combined_train_labels)
+    combined_test_images, combined_test_labels = shuffle(combined_test_images, combined_test_labels)
+    history = model.fit(combined_train_images, combined_train_labels, epochs=5, validation_data=(combined_test_images, combined_test_labels), callbacks=[check])
+
+else:
+    model.load_weights(path)
+
+while True:
+    print("Do you want to take a screenshot? (y/n): ")
+    ans = input()
+    if ans.lower() != "y":
+        break
+    else:
+        window_title = "Screen Reading for paint - Paint" #Give the title of your window or just open paint and title it: "Screen Reading for paint"
+        windows = gw.getWindowsWithTitle(window_title)
+
+        window = windows[0]  # Getting the first matching window
+
+        # Performing actions on the window
+        window.minimize()
+        window.restore()
+        time.sleep(0.3)
+        window.moveTo(0, 0)
+        window.resizeTo(800, 600)
+        time.sleep(0.5)
+        # Waiting briefly for window actions to apply
+        
+        # Capture only the window's area
+        sub_region = {
+        "top": window.top + 340,  
+        "left": window.left + 400,  
+        "width": window.width - 765,  
+        "height": window.height - 450
+        }
+
+
+        with mss.mss() as sct:
+            time.sleep(0.3)
+            screenshot = pyautogui.screenshot(region=(sub_region["left"], sub_region["top"], sub_region["width"], sub_region["height"]))
+            screenshot = np.array(screenshot)
+
+            # Convert to NumPy array (BGR to RGB)
+            img = np.array(screenshot)[:, :, :3]  # Remove alpha channel
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  
+
+            img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            img_gray = 255 - img_gray  
+
+            # Resize without too much blurring
+            img_resized = cv2.resize(img_gray, (28, 28))
+
+            # Normalize (match MNIST format)
+            img_resized = img_resized.astype(np.float32) / 255.0
+
+            # Reshape for model input
+            img_resized = img_resized[np.newaxis,..., np.newaxis]
+
+
+            plt.imshow(img_resized[0, :, :, 0])
+            plt.axis("off")
+            plt.show()
+            
+            predictions = model.predict(img_resized)
+            predicted_label = np.argmax(predictions)
+            print("Predicted Number:", predictions)
+            print("Predicted Number:", predicted_label)
+
+            window.resizeTo(800, 600)
