@@ -138,7 +138,6 @@ while True:
             
             predictions = model.predict(img_resized)
             predicted_label = np.argmax(predictions)
-            print("Predicted Number:", predictions)
             print("Predicted Number:", predicted_label)
 
             window.resizeTo(800, 600)
