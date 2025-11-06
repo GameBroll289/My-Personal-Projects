@@ -11,7 +11,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 import pyautogui
 import tensorflow_datasets as tfds
 
-path="C:/Users/PMLS/OneDrive/Desktop/Ahmed ki bla/Ahmed Programs/Model Checkpoints/checkpoint1.weights.h5"
+path="C:/Users/Dell/Desktop/Ahmed ki bla/Ahmed Programs/Model Checkpoints/checkpoint1.weights.h5"
 check=ModelCheckpoint(filepath=path,save_best_only=True,save_weights_only=True,verbose=1)
 model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
@@ -81,63 +81,66 @@ if ans.lower() != "y":
 else:
     model.load_weights(path)
 
-while True:
-    print("Do you want to take a screenshot? (y/n): ")
-    ans = input()
-    if ans.lower() != "y":
-        break
-    else:
-        window_title = "Screen Reading for paint - Paint" #Give the title of your window or just open paint and title it: "Screen Reading for paint"
-        windows = gw.getWindowsWithTitle(window_title)
+import pygame
+import numpy as np
+import cv2
 
-        window = windows[0]  # Getting the first matching window
+# --- Setup ---
+pygame.init()
+WIDTH, HEIGHT = 280, 280   # large canvas to draw on
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Draw a Digit")
+clock = pygame.time.Clock()
 
-        # Performing actions on the window
-        window.minimize()
-        window.restore()
-        time.sleep(0.3)
-        window.moveTo(0, 0)
-        window.resizeTo(800, 600)
-        time.sleep(0.5)
-        # Waiting briefly for window actions to apply
-        
-        # Capture only the window's area
-        sub_region = {
-        "top": window.top + 340,  
-        "left": window.left + 400,  
-        "width": window.width - 765,  
-        "height": window.height - 450
-        }
+# Drawing variables
+drawing = False
+brush_size = 12
+screen.fill((0, 0, 0))  # black background
 
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
 
-        with mss.mss() as sct:
-            time.sleep(0.3)
-            screenshot = pyautogui.screenshot(region=(sub_region["left"], sub_region["top"], sub_region["width"], sub_region["height"]))
-            screenshot = np.array(screenshot)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            drawing = True
+        elif event.type == pygame.MOUSEBUTTONUP:
+            drawing = False
 
-            # Convert to NumPy array (BGR to RGB)
-            img = np.array(screenshot)[:, :, :3]  # Remove alpha channel
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:  # Press Enter to capture
+                # Get pixel data from screen
+                raw_pixels = pygame.surfarray.array3d(screen)
+                gray = np.dot(raw_pixels[...,:3], [0.299, 0.587, 0.114])  # convert to grayscale
+                gray = gray.swapaxes(0,1)  # fix pygame x/y orientation
 
-            img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-            img_gray = 255 - img_gray  
+                # Resize to 28x28 for CNN (like MNIST)
+                img_resized = cv2.resize(gray, (28, 28), interpolation=cv2.INTER_AREA)
 
-            # Resize without too much blurring
-            img_resized = cv2.resize(img_gray, (28, 28))
+                # Normalize [0,1]
+                img_resized = img_resized / 255.0
 
-            # Normalize (match MNIST format)
-            img_resized = img_resized.astype(np.float32) / 255.0
+                img_input = img_resized.reshape(1, 28, 28, 1).astype("float32")
 
-            # Reshape for model input
-            img_resized = img_resized[np.newaxis,..., np.newaxis]
+                predictions = model.predict(img_input)
+                predicted_label = np.argmax(predictions)
+                for i, prob in enumerate(predictions[0]):
+                    print(f"Digit {i}: {prob*100:.2f}%")
+                print("Highest Confidence: ", predicted_label)
 
+                #print("Captured digit shape:", img_resized.shape)
+                # Now you can feed `img_resized.reshape(1,28,28,1)` into your CNN
 
-            plt.imshow(img_resized[0, :, :, 0])
-            plt.axis("off")
-            plt.show()
-            
-            predictions = model.predict(img_resized)
-            predicted_label = np.argmax(predictions)
-            print("Predicted Number:", predicted_label)
+            elif event.key == pygame.K_c:  # Press C to clear
+                screen.fill((0, 0, 0))
 
-            window.resizeTo(800, 600)
+        # Draw when mouse is pressed
+        if drawing:
+            mouse_pos = pygame.mouse.get_pos()
+            pygame.draw.circle(screen, (255, 255, 255), mouse_pos, brush_size)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+pygame.quit()
